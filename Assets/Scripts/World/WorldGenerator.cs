@@ -1,30 +1,20 @@
-﻿using UnityEngine;
-using HexTactics.Grid;
+﻿using HexTactics.Grid;
+using HexTactics.World.Data;
 using HexTactics.World.Generation;
+using HexTactics.World.Settings;
+using UnityEngine;
 
 namespace HexTactics.World
 {
     public class WorldGenerator : MonoBehaviour
     {
         [Header("References")]
-        [SerializeField]
-        private HexGridManager gridManager;
+        [SerializeField] private HexGridManager gridManager;
 
         [Header("World Settings")]
-        [SerializeField]
-        private WorldType worldType = WorldType.Continents;
+        [SerializeField] private WorldSettings settings = new();
 
-        [SerializeField]
-        private int seed = 0;
-
-        [SerializeField]
-        private float scale = 6f;
-
-        [SerializeField]
-        private float seaLevel = 0.12f;
-
-        [SerializeField]
-        private float falloffStrength = 2.2f;
+        public WorldData CurrentWorld { get; private set; }
 
         private void Start()
         {
@@ -36,56 +26,217 @@ namespace HexTactics.World
         {
             if (gridManager == null)
             {
-                Debug.LogError("Grid Manager missing.");
+                Debug.LogError(
+                    "WorldGenerator is missing its HexGridManager reference."
+                );
+
                 return;
             }
 
-            switch (worldType)
+            if (gridManager.Tiles.Count == 0)
+            {
+                Debug.LogError(
+                    "The hex grid has no tiles. Generate the grid first."
+                );
+
+                return;
+            }
+
+            settings.Width = gridManager.Columns;
+            settings.Height = gridManager.Rows;
+
+            if (settings.RandomizeSeed)
+            {
+                settings.Seed = Random.Range(
+                    -1_000_000_000,
+                    1_000_000_000
+                );
+            }
+
+            CurrentWorld = CreateEmptyWorld();
+
+            switch (settings.WorldType)
             {
                 case WorldType.Continents:
                     GenerateContinents();
                     break;
 
                 case WorldType.Pangaea:
-                    Debug.Log("Pangaea generation not implemented yet.");
+                    Debug.LogWarning(
+                        "Pangaea is not implemented yet. Using Continents."
+                    );
+                    GenerateContinents();
                     break;
 
                 case WorldType.Archipelago:
-                    Debug.Log("Archipelago generation not implemented yet.");
+                    Debug.LogWarning(
+                        "Archipelago is not implemented yet. Using Continents."
+                    );
+                    GenerateContinents();
                     break;
 
                 case WorldType.InlandSea:
-                    Debug.Log("Inland Sea generation not implemented yet.");
+                    Debug.LogWarning(
+                        "Inland Sea is not implemented yet. Using Continents."
+                    );
+                    GenerateContinents();
                     break;
 
                 case WorldType.Fractured:
-                    Debug.Log("Fractured generation not implemented yet.");
+                    Debug.LogWarning(
+                        "Fractured is not implemented yet. Using Continents."
+                    );
+                    GenerateContinents();
                     break;
+
+                default:
+                    Debug.LogError(
+                        $"Unsupported world type: {settings.WorldType}"
+                    );
+                    return;
+            }
+            GenerateElevation();
+            RenderWorld();
+
+            Debug.Log(
+                $"World generated. Type: {settings.WorldType}, " +
+                $"Size: {CurrentWorld.Width}x{CurrentWorld.Height}, " +
+                $"Seed: {settings.Seed}"
+            );
+        }
+
+        private WorldData CreateEmptyWorld()
+        {
+            WorldData world = new()
+            {
+                Width = settings.Width,
+                Height = settings.Height,
+                Tiles = new TileData[
+                    settings.Width,
+                    settings.Height
+                ]
+            };
+
+            for (int row = 0; row < settings.Height; row++)
+            {
+                for (int column = 0;
+                     column < settings.Width;
+                     column++)
+                {
+                    world.Tiles[column, row] = new TileData
+                    {
+                        Column = column,
+                        Row = row,
+                        Terrain = TerrainType.Water,
+                        Biome = BiomeType.Plains,
+                        Resource = ResourceType.None,
+                        Improvement = ImprovementType.None,
+                        Elevation = 0,
+                        HasRiver = false,
+                        Explored = false,
+                        Visible = false
+                    };
+                }
+            }
+
+            return world;
+        }
+
+        private void GenerateElevation()
+        {
+            ElevationGenerator elevationGenerator = new(
+                settings.ElevationScale,
+                settings.Seed
+            );
+
+            for (int row = 0; row < CurrentWorld.Height; row++)
+            {
+                for (int column = 0;
+                     column < CurrentWorld.Width;
+                     column++)
+                {
+                    TileData tileData =
+                        CurrentWorld.Tiles[column, row];
+
+                    if (tileData.Terrain == TerrainType.Water)
+                    {
+                        tileData.Elevation = 0;
+                        continue;
+                    }
+
+                    float elevation = elevationGenerator.GetElevation(
+                        column,
+                        row,
+                        CurrentWorld.Width,
+                        CurrentWorld.Height
+                    );
+
+                    tileData.Elevation =
+                        Mathf.RoundToInt(elevation * 100f);
+
+                    if (elevation >= settings.MountainThreshold)
+                    {
+                        tileData.Terrain = TerrainType.Mountain;
+                    }
+                    else if (elevation >= settings.HillThreshold)
+                    {
+                        tileData.Terrain = TerrainType.Hill;
+                    }
+                    else
+                    {
+                        tileData.Terrain = TerrainType.Grass;
+                    }
+                }
             }
         }
 
         private void GenerateContinents()
         {
-            ContinentGenerator continent = new ContinentGenerator(
-                scale,
-                seaLevel,
-                falloffStrength,
-                seed);
+            ContinentGenerator continentGenerator = new(
+                settings.ContinentScale,
+                settings.SeaLevel,
+                settings.FalloffStrength,
+                settings.Seed
+            );
 
-            foreach (HexTile tile in gridManager.Tiles.Values)
+            for (int row = 0; row < CurrentWorld.Height; row++)
             {
-                bool land = continent.IsLand(
-                    tile.Column,
-                    tile.Row,
-                    gridManager.Columns,
-                    gridManager.Rows);
+                for (int column = 0;
+                     column < CurrentWorld.Width;
+                     column++)
+                {
+                    bool isLand = continentGenerator.IsLand(
+                        column,
+                        row,
+                        CurrentWorld.Width,
+                        CurrentWorld.Height
+                    );
 
-                tile.Terrain = land
-                    ? TerrainType.Grass
-                    : TerrainType.Water;
+                    TileData tileData =
+                        CurrentWorld.Tiles[column, row];
+
+                    tileData.Terrain = isLand
+                        ? TerrainType.Grass
+                        : TerrainType.Water;
+                }
             }
+        }
 
-            Debug.Log("Continent generated.");
+        private void RenderWorld()
+        {
+            foreach (HexTile hexTile in gridManager.Tiles.Values)
+            {
+                TileData tileData = CurrentWorld.Tiles[
+                    hexTile.Column,
+                    hexTile.Row
+                ];
+
+                hexTile.Terrain = tileData.Terrain;
+                hexTile.Biome = tileData.Biome;
+                hexTile.Resource = tileData.Resource;
+                hexTile.Improvement = tileData.Improvement;
+                hexTile.Elevation = tileData.Elevation;
+            }
         }
     }
 }
