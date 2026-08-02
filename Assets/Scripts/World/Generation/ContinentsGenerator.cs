@@ -35,9 +35,16 @@ namespace HexTactics.World.Generation
             float nx = x / (float)width;
             float ny = y / (float)height;
 
-            float noise = Mathf.PerlinNoise(
+            // Combine large and small features for more interesting coastlines
+            float large = Mathf.PerlinNoise(
                 nx * scale + offset.x,
                 ny * scale + offset.y);
+
+            float small = Mathf.PerlinNoise(
+                nx * scale * 2.5f + offset.x + 200f,
+                ny * scale * 2.5f + offset.y + 200f);
+
+            float noise = Mathf.Clamp01(large * 0.75f + small * 0.25f);
 
             float dx = nx - .5f;
             float dy = ny - .5f;

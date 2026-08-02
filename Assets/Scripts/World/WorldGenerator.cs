@@ -1,4 +1,4 @@
-﻿using HexTactics.Grid;
+using HexTactics.Grid;
 using HexTactics.World.Data;
 using HexTactics.World.Generation;
 using HexTactics.World.Settings;
@@ -95,8 +95,12 @@ namespace HexTactics.World
                     );
                     return;
             }
+
             GenerateElevation();
+
+            // Generate rivers after elevation so sources and downhill directions exist
             GenerateRivers();
+
             RenderWorld();
 
             Debug.Log(
@@ -191,26 +195,29 @@ namespace HexTactics.World
             }
         }
 
-        private void GenerateRivers()
-        {
-            RiverGenerator riverGenerator = new(
-                CurrentWorld,
-                settings.Seed
-            );
-
-            riverGenerator.GenerateRivers(
-                settings.RiverCount,
-                settings.MinimumRiverSourceElevation,
-                settings.MaximumRiverLength
-            );
-        }
-
         private void GenerateContinents()
         {
+            // Tailor generation depending on world type. Archipelago uses
+            // smaller-scale noise and an additional island scatter pass so
+            // it produces many small islands instead of large continents.
+            float scale = settings.ContinentScale;
+            float seaLevel = settings.SeaLevel;
+            float falloff = settings.FalloffStrength;
+
+            if (settings.WorldType == Generation.WorldType.Archipelago)
+            {
+                // Increase scale for smaller features and raise sea level
+                // so more water remains. Reduce falloff so islands are not
+                // forced to the center of the map.
+                scale = settings.ContinentScale * 3f;
+                seaLevel = Mathf.Clamp01(settings.SeaLevel + 0.18f);
+                falloff = Mathf.Max(0.5f, settings.FalloffStrength * 0.5f);
+            }
+
             ContinentGenerator continentGenerator = new(
-                settings.ContinentScale,
-                settings.SeaLevel,
-                settings.FalloffStrength,
+                scale,
+                seaLevel,
+                falloff,
                 settings.Seed
             );
 
@@ -235,6 +242,52 @@ namespace HexTactics.World
                         : TerrainType.Water;
                 }
             }
+
+            // Additional island scattering for Archipelago type to create
+            // more small, scattered islands.
+            if (settings.WorldType == Generation.WorldType.Archipelago)
+            {
+                System.Random rand = new(settings.Seed + 99999);
+
+                int area = settings.Width * settings.Height;
+                int islandCenters = Mathf.Clamp(area / 300, 8, 200);
+
+                int avgDim = (settings.Width + settings.Height) / 2;
+
+                for (int i = 0; i < islandCenters; i++)
+                {
+                    int cx = rand.Next(0, settings.Width);
+                    int cy = rand.Next(0, settings.Height);
+
+                    int radius = Mathf.Clamp(avgDim / 40 + rand.Next(avgDim / 100 + 1), 2, 14);
+
+                    for (int y = Mathf.Max(0, cy - radius); y <= Mathf.Min(settings.Height - 1, cy + radius); y++)
+                    {
+                        for (int x = Mathf.Max(0, cx - radius); x <= Mathf.Min(settings.Width - 1, cx + radius); x++)
+                        {
+                            TileData t = CurrentWorld.Tiles[x, y];
+
+                            // skip existing water far from center
+                            float dx = x - cx;
+                            float dy = y - cy;
+                            float dist = Mathf.Sqrt(dx * dx + dy * dy);
+
+                            if (dist > radius)
+                                continue;
+
+                            // probability decreases with distance
+                            double chance = 0.85 - (dist / (radius + 1)) * 0.8;
+
+                            if (rand.NextDouble() < chance)
+                            {
+                                t.Terrain = TerrainType.Grass;
+                                // give a small elevation bump so islands are not flat
+                                t.Elevation = Mathf.Max(t.Elevation, rand.Next(10, 45));
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         private void RenderWorld()
@@ -251,8 +304,20 @@ namespace HexTactics.World
                 hexTile.Resource = tileData.Resource;
                 hexTile.Improvement = tileData.Improvement;
                 hexTile.Elevation = tileData.Elevation;
-                hexTile.SetRiver(tileData.HasRiver);
+                // Mark river visuals on the tile
+                hexTile.HasRiver = tileData.HasRiver;
             }
+        }
+
+        private void GenerateRivers()
+        {
+            RiverGenerator riverGenerator = new(CurrentWorld, settings.Seed);
+
+            riverGenerator.GenerateRivers(
+                settings.RiverCount,
+                settings.MinRiverSourceElevation,
+                settings.MaxRiverLength
+            );
         }
     }
 }

@@ -29,10 +29,12 @@ namespace HexTactics.World.Settings
         // Climate settings
         public float Temperature = 0.5f;
         public float Rainfall = 0.5f;
-
         // River settings
-        public int RiverCount = 8;
-        public int MinimumRiverSourceElevation = 65;
-        public int MaximumRiverLength = 80;
+        public int RiverCount = 6;
+        // Minimum elevation (0-100) to be considered a river source
+        public int MinRiverSourceElevation = 40;
+        // Maximum tile steps a river can take
+        public int MaxRiverLength = 200;
+
     }
 }

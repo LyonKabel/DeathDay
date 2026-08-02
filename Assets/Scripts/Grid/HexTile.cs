@@ -23,6 +23,7 @@ namespace HexTactics.Grid
         [SerializeField] private ResourceType resource = ResourceType.None;
         [SerializeField] private ImprovementType improvement = ImprovementType.None;
         [SerializeField] private int elevation = 0;
+        [SerializeField] private bool hasRiver = false;
 
         private readonly List<HexTile> neighbors = new();
 
@@ -44,7 +45,7 @@ namespace HexTactics.Grid
             set => isWalkable = value;
         }
 
-        public bool HasRiver { get; private set; }
+        
 
         public int MovementCost
         {
@@ -135,6 +136,16 @@ namespace HexTactics.Grid
             set => elevation = value;
         }
 
+        public bool HasRiver
+        {
+            get => hasRiver;
+            set
+            {
+                hasRiver = value;
+                RefreshTerrainVisual();
+            }
+        }
+
         private void Awake()
         {
             meshRenderer = GetComponent<MeshRenderer>();
@@ -158,11 +169,7 @@ namespace HexTactics.Grid
             CreateHexMesh(radius);
             SetColor(normalColor);
         }
-        public void SetRiver(bool hasRiver)
-        {
-            HasRiver = hasRiver;
-            RefreshTerrainVisual();
-        }
+        
 
         public void AddNeighbor(HexTile neighbor)
         {
@@ -248,13 +255,12 @@ namespace HexTactics.Grid
                     break;
             }
 
-            if (HasRiver && terrain != TerrainType.Water)
+            
+            // If this tile has a river, subtly blend in a blue tint so rivers are visible
+            if (hasRiver && terrain != TerrainType.Water)
             {
-                normalColor = Color.Lerp(
-                    normalColor,
-                    new Color(0.1f, 0.65f, 1f),
-                    0.65f
-                );
+                Color riverTint = new Color(.15f, .35f, .6f);
+                normalColor = Color.Lerp(normalColor, riverTint, 0.35f);
             }
 
             ResetVisual();
