@@ -44,6 +44,8 @@ namespace HexTactics.Grid
             set => isWalkable = value;
         }
 
+        public bool HasRiver { get; private set; }
+
         public int MovementCost
         {
             get => movementCost;
@@ -156,6 +158,11 @@ namespace HexTactics.Grid
             CreateHexMesh(radius);
             SetColor(normalColor);
         }
+        public void SetRiver(bool hasRiver)
+        {
+            HasRiver = hasRiver;
+            RefreshTerrainVisual();
+        }
 
         public void AddNeighbor(HexTile neighbor)
         {
@@ -239,6 +246,15 @@ namespace HexTactics.Grid
                 case TerrainType.Snow:
                     normalColor = Color.white;
                     break;
+            }
+
+            if (HasRiver && terrain != TerrainType.Water)
+            {
+                normalColor = Color.Lerp(
+                    normalColor,
+                    new Color(0.1f, 0.65f, 1f),
+                    0.65f
+                );
             }
 
             ResetVisual();

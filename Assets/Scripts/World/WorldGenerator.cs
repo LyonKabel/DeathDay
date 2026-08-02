@@ -96,6 +96,7 @@ namespace HexTactics.World
                     return;
             }
             GenerateElevation();
+            GenerateRivers();
             RenderWorld();
 
             Debug.Log(
@@ -190,6 +191,20 @@ namespace HexTactics.World
             }
         }
 
+        private void GenerateRivers()
+        {
+            RiverGenerator riverGenerator = new(
+                CurrentWorld,
+                settings.Seed
+            );
+
+            riverGenerator.GenerateRivers(
+                settings.RiverCount,
+                settings.MinimumRiverSourceElevation,
+                settings.MaximumRiverLength
+            );
+        }
+
         private void GenerateContinents()
         {
             ContinentGenerator continentGenerator = new(
@@ -236,6 +251,7 @@ namespace HexTactics.World
                 hexTile.Resource = tileData.Resource;
                 hexTile.Improvement = tileData.Improvement;
                 hexTile.Elevation = tileData.Elevation;
+                hexTile.SetRiver(tileData.HasRiver);
             }
         }
     }
