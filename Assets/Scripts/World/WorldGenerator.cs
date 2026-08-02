@@ -304,8 +304,10 @@ namespace HexTactics.World
                 hexTile.Resource = tileData.Resource;
                 hexTile.Improvement = tileData.Improvement;
                 hexTile.Elevation = tileData.Elevation;
-                // Mark river visuals on the tile
+                // Update river state; disable per-edge placeholder visuals so
+                // we only show the continuous river lines created below.
                 hexTile.HasRiver = tileData.HasRiver;
+                hexTile.SetRiverEdges(new bool[6]);
             }
         }
 
@@ -318,6 +320,111 @@ namespace HexTactics.World
                 settings.MinRiverSourceElevation,
                 settings.MaxRiverLength
             );
+
+            CreateRiverVisuals(riverGenerator.Rivers);
+        }
+
+        private void CreateRiverVisuals(System.Collections.Generic.IReadOnlyList<System.Collections.Generic.List<UnityEngine.Vector2Int>> rivers)
+        {
+            // Remove existing river parent if any
+            Transform existing = gridManager.transform.Find("Rivers");
+            if (existing != null)
+            {
+                if (Application.isPlaying)
+                    Destroy(existing.gameObject);
+                else
+                    DestroyImmediate(existing.gameObject);
+            }
+
+            GameObject riversParent = new("Rivers");
+            riversParent.transform.SetParent(gridManager.transform, false);
+
+            Shader shader = Shader.Find("Sprites/Default") ?? Shader.Find("Standard");
+            Material riverMat = new(shader) { color = new Color(0.06f, 0.48f, 0.8f, 1f) };
+
+            foreach (var path in rivers)
+            {
+                if (path == null || path.Count < 2)
+                    continue;
+
+                // Build world-space positions from tile centers
+                var positions = new System.Collections.Generic.List<UnityEngine.Vector3>();
+
+                foreach (var coord in path)
+                {
+                    if (gridManager.Tiles.TryGetValue(coord, out var hex))
+                    {
+                        positions.Add(hex.transform.position + Vector3.up * 0.02f);
+                    }
+                }
+
+                if (positions.Count < 2)
+                    continue;
+
+                // Optional smoothing: Catmull-Rom interpolation
+                var smooth = SmoothPath(positions, 4);
+
+                GameObject go = new GameObject("River");
+                go.transform.SetParent(riversParent.transform, false);
+
+                LineRenderer lr = go.AddComponent<LineRenderer>();
+                lr.useWorldSpace = true;
+                lr.material = riverMat;
+                lr.positionCount = smooth.Count;
+                lr.SetPositions(smooth.ToArray());
+
+                float baseWidth = 0.12f;
+                if (smooth.Count >= 2)
+                    baseWidth = Mathf.Clamp(Vector3.Distance(smooth[0], smooth[1]) * 0.22f, 0.03f, 0.22f);
+
+                lr.startWidth = lr.endWidth = baseWidth;
+                lr.numCapVertices = 6;
+                lr.numCornerVertices = 6;
+                lr.startColor = lr.endColor = new Color(0.05f, 0.45f, 0.9f, 1f);
+            }
+        }
+
+        private System.Collections.Generic.List<UnityEngine.Vector3> SmoothPath(System.Collections.Generic.List<UnityEngine.Vector3> pts, int subdivisions)
+        {
+            var result = new System.Collections.Generic.List<UnityEngine.Vector3>();
+
+            if (pts.Count < 2)
+            {
+                return pts;
+            }
+
+            // For endpoints, duplicate end control points to produce proper tangents
+            for (int i = 0; i < pts.Count - 1; i++)
+            {
+                UnityEngine.Vector3 p0 = i == 0 ? pts[i] : pts[i - 1];
+                UnityEngine.Vector3 p1 = pts[i];
+                UnityEngine.Vector3 p2 = pts[i + 1];
+                UnityEngine.Vector3 p3 = i + 2 < pts.Count ? pts[i + 2] : pts[i + 1];
+
+                for (int j = 0; j <= subdivisions; j++)
+                {
+                    float t = j / (float)subdivisions;
+                    // Catmull-Rom
+                    float t2 = t * t;
+                    float t3 = t2 * t;
+
+                    UnityEngine.Vector3 point = 0.5f * (
+                        (2f * p1) +
+                        (-p0 + p2) * t +
+                        (2f * p0 - 5f * p1 + 4f * p2 - p3) * t2 +
+                        (-p0 + 3f * p1 - 3f * p2 + p3) * t3);
+
+                    // Avoid duplicates at joins
+                    if (result.Count == 0 || (result[result.Count - 1] - point).sqrMagnitude > 0.0001f)
+                        result.Add(point);
+                }
+            }
+
+            // ensure last point
+            if (!result.Contains(pts[pts.Count - 1]))
+                result.Add(pts[pts.Count - 1]);
+
+            return result;
         }
     }
 }

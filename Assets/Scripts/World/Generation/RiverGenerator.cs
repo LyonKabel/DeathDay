@@ -9,6 +9,8 @@ namespace HexTactics.World.Generation
     {
         private readonly WorldData world;
         private readonly System.Random random;
+        // Stored river paths as lists of tile coordinates (column,row)
+        private readonly List<List<UnityEngine.Vector2Int>> rivers = new();
 
         private static readonly Vector2Int[] EvenRowDirections =
         {
@@ -35,6 +37,8 @@ namespace HexTactics.World.Generation
             this.world = world;
             random = new System.Random(seed + 47_921);
         }
+
+        public IReadOnlyList<List<UnityEngine.Vector2Int>> Rivers => rivers;
 
         public void GenerateRivers(
             int riverCount,
@@ -118,9 +122,22 @@ namespace HexTactics.World.Generation
 
                 if (current.Terrain == TerrainType.Water)
                 {
+                    // Ensure tiles in the path are marked as having river
                     MarkRiverPath(riverPath);
+
+                    // Record the river path as coordinates for later visualisation
+                    List<UnityEngine.Vector2Int> coords = new();
+                    foreach (TileData t in riverPath)
+                    {
+                        coords.Add(new UnityEngine.Vector2Int(t.Column, t.Row));
+                    }
+
+                    rivers.Add(coords);
+
                     return riverPath.Count >= 3;
                 }
+
+                TileData prev = current;
 
                 TileData next = FindBestDownhillNeighbor(
                     current,
@@ -132,11 +149,45 @@ namespace HexTactics.World.Generation
                     break;
                 }
 
+                // Mark the river edge between prev and next so the river is
+                // stored per-edge (on both tiles).
+                MarkEdgeBetween(prev, next);
+
                 current = next;
             }
 
             // Do not keep short rivers that never reach water.
             return false;
+        }
+
+        private void MarkEdgeBetween(TileData a, TileData b)
+        {
+            if (a == null || b == null) return;
+
+            Vector2Int[] directions =
+                a.Row % 2 == 0 ? EvenRowDirections : OddRowDirections;
+
+            int dirIndex = -1;
+
+            for (int i = 0; i < directions.Length; i++)
+            {
+                if (directions[i].x == b.Column - a.Column &&
+                    directions[i].y == b.Row - a.Row)
+                {
+                    dirIndex = i;
+                    break;
+                }
+            }
+
+            if (dirIndex == -1)
+                return;
+
+            a.RiverEdges[dirIndex] = true;
+            int opposite = (dirIndex + 3) % 6;
+            b.RiverEdges[opposite] = true;
+
+            a.HasRiver = true;
+            b.HasRiver = true;
         }
 
         private TileData FindBestDownhillNeighbor(
@@ -238,9 +289,16 @@ namespace HexTactics.World.Generation
             {
                 for (int column = 0; column < world.Width; column++)
                 {
-                    world.Tiles[column, row].HasRiver = false;
+                    TileData t = world.Tiles[column, row];
+                    t.HasRiver = false;
+                    if (t.RiverEdges == null || t.RiverEdges.Length != 6)
+                        t.RiverEdges = new bool[6];
+                    else
+                        for (int i = 0; i < 6; i++) t.RiverEdges[i] = false;
                 }
             }
+
+            rivers.Clear();
         }
 
         private void Shuffle<T>(IList<T> list)

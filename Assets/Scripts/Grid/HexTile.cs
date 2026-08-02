@@ -30,6 +30,10 @@ namespace HexTactics.Grid
         private MeshRenderer meshRenderer;
         private MaterialPropertyBlock propertyBlock;
 
+        // Renderers used to draw river segments on hex edges
+        private LineRenderer[] riverRenderers = new LineRenderer[6];
+        private Material riverMaterial;
+
         private Color normalColor = Color.gray;
         private Color currentColor = Color.gray;
 
@@ -168,6 +172,51 @@ namespace HexTactics.Grid
 
             CreateHexMesh(radius);
             SetColor(normalColor);
+            CreateRiverRenderers(radius);
+        }
+
+        private void CreateRiverRenderers(float radius)
+        {
+            if (riverMaterial == null)
+            {
+                Shader shader = Shader.Find("Sprites/Default");
+                riverMaterial = shader != null ? new Material(shader) : new Material(Shader.Find("Standard"));
+                riverMaterial.color = Color.cyan;
+            }
+
+            for (int i = 0; i < 6; i++)
+            {
+                if (riverRenderers[i] != null)
+                    continue;
+
+                GameObject go = new GameObject($"RiverEdge_{i}");
+                go.transform.SetParent(transform, false);
+
+                LineRenderer lr = go.AddComponent<LineRenderer>();
+                lr.positionCount = 2;
+                lr.useWorldSpace = false;
+                lr.material = riverMaterial;
+                lr.startWidth = lr.endWidth = radius * 0.18f;
+                lr.numCapVertices = 2;
+                lr.startColor = lr.endColor = Color.blue;
+
+                // compute midpoint of the edge in local space
+                float angleA = (30f + i * 60f) * Mathf.Deg2Rad;
+                float angleB = (30f + (i + 1) * 60f) * Mathf.Deg2Rad;
+
+                Vector3 a = new Vector3(radius * Mathf.Cos(angleA), 0f, radius * Mathf.Sin(angleA));
+                Vector3 b = new Vector3(radius * Mathf.Cos(angleB), 0f, radius * Mathf.Sin(angleB));
+
+                Vector3 mid = (a + b) * 0.5f;
+                Vector3 inner = mid * 0.45f;
+
+                lr.SetPosition(0, inner);
+                lr.SetPosition(1, mid);
+
+                lr.enabled = false;
+
+                riverRenderers[i] = lr;
+            }
         }
         
 
@@ -277,6 +326,20 @@ namespace HexTactics.Grid
             meshRenderer.GetPropertyBlock(propertyBlock);
             propertyBlock.SetColor(BaseColorID, color);
             meshRenderer.SetPropertyBlock(propertyBlock);
+        }
+
+        // Called by the world renderer to indicate which edges have rivers
+        public void SetRiverEdges(bool[] edges)
+        {
+            if (riverRenderers == null)
+                return;
+
+            for (int i = 0; i < riverRenderers.Length; i++)
+            {
+                bool enabled = edges != null && i < edges.Length && edges[i];
+                if (riverRenderers[i] != null)
+                    riverRenderers[i].enabled = enabled;
+            }
         }
 
         private void CreateHexMesh(float radius)

@@ -17,6 +17,10 @@ namespace HexTactics.World.Data
 
         public int Elevation;
 
+        // River presence on each hex edge. Index 0..5 following the
+        // neighbor direction arrays used by RiverGenerator.
+        public bool[] RiverEdges = new bool[6];
+
         public bool HasRiver;
 
         public bool Explored;
